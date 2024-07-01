@@ -28,12 +28,12 @@ def check_os():
 
 check_os()
 
+
 import subprocess
 import sys
 
 def install_and_import(package, version):
     try:
-        logging.info("Checking for required packages...")
         __import__(package)
     except ImportError:
         subprocess.check_call([sys.executable, "-m", "pip", "install", f"{package}=={version}"])
@@ -62,8 +62,8 @@ init(autoreset=True)
 
 TOKEN = os.getenv('TOKEN')
 RAM_LIMIT = os.getenv('RAM_LIMIT')
-CORES = os.getenv('CPU_LIMIT')
-STORAGE_LIMIT = os.getenv('STORAGE_LIMIT')
+CORES=os.getenv('CPU_LIMIT')
+STORAGE_LIMIT=os.getenv('STORAGE_LIMIT')
 
 logging.info(f"{Fore.WHITE}{Style.BRIGHT}Specified Specs for VPS Creation: {Style.RESET_ALL}" + str(RAM_LIMIT) + " RAM, " + str(CORES) + " cores, " + str(STORAGE_LIMIT) + " storage")
 
@@ -145,11 +145,12 @@ async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(title="Help", color=0x00ff00)
     embed.add_field(name="/deploy-ubuntu", value="Creates a new server with Ubuntu 22.04", inline=False)
     embed.add_field(name="/deploy-debian", value="Creates a new server with Debian 12", inline=False)
+    embed.add_field(name="/deploy-arch", value="Creates a new server with Arch Linux", inline=False)
     embed.add_field(name="/remove <ssh_command/Name>", value="Removes a server", inline=False)
-    embed.add_field(name="/restart <ssh_command/Name>", value="Restart a server", inline=False)
-    embed.add_field(name="/start <ssh_command/Name>", value="Start a server", inline=False)
-    embed.add_field(name="/stop <ssh_command/Name>", value="Stop a server", inline=False)
-    embed.add_field(name="/ressh <ssh_command/Name>", value="Fix's SSH. However restart is recommanded.", inline=False)
+    embed.add_field(name="/restart <ssh_command/Name>", value="Restart a server (Disabled. Broken)", inline=False)
+    embed.add_field(name="/start <ssh_command/Name>", value="Start a server (Disabled. Broken)", inline=False)
+    embed.add_field(name="/stop <ssh_command/Name>", value="Stop a server (Disabled. Broken)", inline=False)
+    embed.add_field(name="/ressh <ssh_command/Name>", value="Fix's SSH. However restart is recommanded. (Disabled. Broken)", inline=False)
     embed.add_field(name="/list", value="List all your server", inline=False)
     embed.add_field(name="/support", value="Provides support server link", inline=False)
     await interaction.response.send_message(embed=embed)
@@ -198,8 +199,6 @@ async def create_server_task(interaction: discord.Interaction):
         detach=True, 
         tty=True, 
         mem_limit=RAM_LIMIT, 
-        nano_cpus=CORES * 1e9, 
-        storage_opt={'size': STORAGE_LIMIT}
     )
 
     ssh_session_line = await get_ssh_session_line(container)
@@ -213,7 +212,7 @@ async def create_server_task(interaction: discord.Interaction):
         container.remove()
 
 async def create_server_task_debian(interaction: discord.Interaction):
-    await interaction.response.send_message(embed=discord.Embed(description="Creating server, This takes a few seconds.\n\nLog:```running apt update\nrunning apt install tmate -y\nrunning tmate -F```", color=0x00ff00))
+    await interaction.response.send_message(embed=discord.Embed(description="Creating server, This takes a few seconds.\n```running apt update\nrunning apt install tmate -y\nrunning tmate -F```", color=0x00ff00))
     user = str(interaction.user)
     if count_user_servers(user) >= SERVER_LIMIT:
         await interaction.followup.send(embed=discord.Embed(description="Error: Server Limit-reached\n```Failed to run apt update\nFailed to run apt install tmate\nFailed to run tmate -F\nError: Server Limit-reached```", color=0xff0000))
@@ -232,8 +231,38 @@ async def create_server_task_debian(interaction: discord.Interaction):
         detach=True, 
         tty=True, 
         mem_limit=RAM_LIMIT, 
-        nano_cpus=CORES * 1e9, 
-        storage_opt={'size': STORAGE_LIMIT}
+    )
+
+    ssh_session_line = await get_ssh_session_line(container)
+    if ssh_session_line:
+        await interaction.user.send(embed=discord.Embed(description=f"### Successfully created VPS\n SSH Session Command: ```{ssh_session_line}```Powered by [is-a.space](https://discord.gg/is-a-space)\nOS: Debian 12", color=0x00ff00))
+        add_to_database(user, container.name, ssh_session_line)
+        await interaction.followup.send(embed=discord.Embed(description="Server created successfully. Check your DMs for details.", color=0x00ff00))
+    else:
+        await interaction.followup.send(embed=discord.Embed(description="Something went wrong or the server is taking longer than expected. if this problem continues, Contact Support.", color=0xff0000))
+        container.stop()
+        container.remove()
+
+async def create_server_task_arch(interaction: discord.Interaction):
+    await interaction.response.send_message(embed=discord.Embed(description="Creating server, This takes a few seconds.\n\nLog:```running pacman -Syu\nrunning pacman -Sy tmate\nrunning tmate -F```", color=0x00ff00))
+    user = str(interaction.user)
+    if count_user_servers(user) >= SERVER_LIMIT:
+        await interaction.followup.send(embed=discord.Embed(description="```Failed to run tmate -F\nError: Server Limit-reached```", color=0xff0000))
+        return
+
+    image = "archlinux:latest"
+    commands = """
+    pacman -Sy \
+    pacman -Syu tamte && \
+    tmate -F
+    """
+
+    container = client.containers.run(
+        image, 
+        command="sh -c '{}'".format(commands), 
+        detach=True, 
+        tty=True, 
+        mem_limit=RAM_LIMIT, 
     )
 
     ssh_session_line = await get_ssh_session_line(container)
@@ -346,6 +375,10 @@ async def deploy(interaction: discord.Interaction):
 @bot.tree.command(name="deploy-debian", description="Creates a new server with Debian 12.")
 async def deploy(interaction: discord.Interaction):
     await create_server_task_debian(interaction)
+
+@bot.tree.command(name="deploy-arch", description="Creates a new server with Arch Linux.")
+async def deploy(interaction: discord.Interaction):
+    await create_server_task_arch(interaction)
 
 @bot.tree.command(name="remove", description="Removes a server")
 async def remove(interaction: discord.Interaction, ssh_command: str):
