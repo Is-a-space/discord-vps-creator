@@ -32,7 +32,7 @@
 - Open your terminal and paste the SSH command to SSH into the server.
 
 **Requirements to use the bot**:
-- Your bot host is Linux (any distro). We recommand **Ubuntu, Debian, or Alpine** as the OS to get the best preformance.
+- Your bot host is Linux (any distro). We support **Ubuntu, Debian, or Alpine** only.
 - Docker is installed on your Linux machine.
 - Python 3.10 is insatlled on your Linux machine. (You can run `sudo apt install python3 python3-pip` to download Python)
 
@@ -42,4 +42,7 @@
 - Rename the file from `.env.example` to `.env`
 - Run the file by using `python3 main.py` or `python main.py` or `py main.py`
 
-If you want to see the bot in action or you are too lazy to deploy it yourself, you can invite our VPS bot [here](https://discord.com/oauth2/authorize?client_id=1249856618468737104&permissions=8&integration_type=0&scope=bot)
+**How can I add my own OS's?**
+You can add your own OS's by editing or copying the code to change the commands and the docker image.
+
+If you want to see the bot in action or you are too lazy to deploy it yourself, you can invite our VPS bot [here](https://discord.com/oauth2/authorize?client_id=1249856618468737104&permissions=8&integration_type=0&scope=bot) or join our [Discord](https://discord.gg/freevps)

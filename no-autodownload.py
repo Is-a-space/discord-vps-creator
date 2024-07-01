@@ -1,3 +1,33 @@
+import logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+def check_os():
+    try:
+        with open('/etc/os-release') as f:
+            os_info = f.readlines()
+
+            os_details = {}
+            for line in os_info:
+                if '=' in line:
+                    key, value = line.strip().split('=', 1)
+                    os_details[key] = value.strip('"')
+
+            os_id = os_details.get('ID', '').lower()
+
+            if os_id in ['ubuntu', 'debian', 'alpine']:
+                logging.info(f"Operating system detected: {os_id.capitalize()}")
+            else:
+                logging.info("Operating system is not Ubuntu, Debian, or Alpine. Please run this code in either of those distros before rerunning this code.")
+                sys.exit(0)
+    except FileNotFoundError:
+        logging.error("The /etc/os-release file does not exist on this system.")
+        sys.exit(0)
+    except Exception as e:
+        logging.error(f"An error occurred while checking the OS: {e}")
+        sys.exit(0)
+
+check_os()
+
 from colorama import Fore, Style, init
 import discord
 from discord.ext import commands, tasks
@@ -7,6 +37,7 @@ import re
 import os
 import concurrent.futures
 from dotenv import load_dotenv
+import sys
 load_dotenv()
 init(autoreset=True)
 
@@ -15,13 +46,23 @@ RAM_LIMIT = os.getenv('RAM_LIMIT')
 CORES = os.getenv('CPU_LIMIT')
 STORAGE_LIMIT = os.getenv('STORAGE_LIMIT')
 
-print(f"{Fore.WHITE}{Style.BRIGHT}Specified Specs for VPS Creation: {Style.RESET_ALL}" + str(RAM_LIMIT) + " RAM, " + str(CORES) + " cores, " + str(STORAGE_LIMIT) + " storage")
+logging.info(f"{Fore.WHITE}{Style.BRIGHT}Specified Specs for VPS Creation: {Style.RESET_ALL}" + str(RAM_LIMIT) + " RAM, " + str(CORES) + " cores, " + str(STORAGE_LIMIT) + " storage")
 
 intents = discord.Intents.all()
 intents.messages = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix='/', intents=intents)
+
+def check_docker():
+    try:
+        client = docker.from_env()
+        client.version()
+        logging.info("Docker is installed and running.")
+    except docker.errors.DockerException as e:
+        logging.info("Error! Docker is not installed or not started. Please install Docker or start Docker before running this again.")
+        sys.exit(0)
+check_docker()
 
 client = docker.from_env()
 
@@ -152,7 +193,7 @@ async def create_server_task(interaction: discord.Interaction):
         container.stop()
         container.remove()
 
-async def create_server_task_arch(interaction: discord.Interaction):
+async def create_server_task_debian(interaction: discord.Interaction):
     await interaction.response.send_message(embed=discord.Embed(description="Creating server, This takes a few seconds.\n\nLog:```running apt update\nrunning apt install tmate -y\nrunning tmate -F```", color=0x00ff00))
     user = str(interaction.user)
     if count_user_servers(user) >= SERVER_LIMIT:
