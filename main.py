@@ -344,6 +344,7 @@ async def stop_server(interaction: discord.Interaction, ssh_command_or_name: str
             break
     if not server_found:
         await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
+
 async def stop_server_task(interaction: discord.Interaction, ssh_command: str):
     user = str(interaction.user)
     servers = get_user_servers(user)
@@ -363,8 +364,7 @@ async def stop_server_task(interaction: discord.Interaction, ssh_command: str):
         else:
             await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
     else:
-        await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to stop this server.", color=0xff0000))
-@bot.tree.command(name="remove", description="Removes a server")
+        await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to stop this server.", color=0xff0000))@bot.tree.command(name="remove", description="Removes a server")
 async def remove_server(interaction: discord.Interaction, ssh_command_or_name: str):
     user = str(interaction.user)
     servers = get_user_servers(user)
