@@ -290,43 +290,44 @@ async def deploy_arch(interaction: discord.Interaction):
 async def start_server_task(interaction: discord.Interaction, ssh_command_or_name: str):
     user = str(interaction.user)
     servers = get_user_servers(user)
-    server_found = False
 
     for server in servers:
-        _, container_name, old_ssh_command = server.split('|')
-        if ssh_command_or_name in (old_ssh_command, container_name):
-            server_found = True
-            container = client.containers.get(container_name)
-            
-            if container.status == 'running':
-                await interaction.followup.send(embed=discord.Embed(description="Server is already running.", color=0xff0000))
-                return
+        _, container_name, ssh_command = server.split('|')
+        if ssh_command == ssh_command_or_name or container_name == ssh_command_or_name:
+            try:
+                container = client.containers.get(container_name)
+                if container.status != 'running':
+                    logging.info(f"Starting container: {container_name}")
+                    container.start()
+                else:
+                    logging.info(f"Container {container_name} is already running.")
 
-            container.start()
+                container.reload()
+                logging.info(f"Container {container_name} status: {container.status}")
 
-            exec_result = container.exec_run("tmate -F", detach=True)
-            if exec_result.exit_code != 0:
-                await interaction.followup.send(embed=discord.Embed(description="Failed to start server: Unable to execute SSH command.", color=0xff0000))
-                return
+                exec_result = container.exec_run('tmate -F', tty=True, stderr=True, stdout=True)
+                if exec_result.exit_code != 0:
+                    raise Exception(exec_result.output.decode('utf-8'))
 
-            ssh_session_line = await get_ssh_session_line(container)
-            if ssh_session_line:
-                await interaction.user.send(embed=discord.Embed(description=f"Server started successfully. New SSH Session Command: ```{ssh_session_line}```", color=0x00ff00))
-                remove_from_database(old_ssh_command)
-                add_to_database(user, container_name, ssh_session_line)
-                await interaction.followup.send(embed=discord.Embed(description="Server started successfully. Check your DMs for details.", color=0x00ff00))
-            else:
-                await interaction.followup.send(embed=discord.Embed(description="Server started, but failed to retrieve the SSH session command.", color=0xff0000))
-            break
-    
-    if not server_found:
-        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
+                ssh_session_line = await get_ssh_session_line(container)
+                if ssh_session_line:
+                    await interaction.response.send_message(embed=discord.Embed(description=f"Server started successfully. SSH command: {ssh_session_line}", color=0x00ff00))
+                else:
+                    raise Exception("Unable to retrieve SSH session line.")
+
+            except Exception as e:
+                error_message = f"Failed to start server: Unable to execute SSH command. Error: {str(e)}"
+                logging.error(error_message)
+                await interaction.response.send_message(embed=discord.Embed(description=error_message, color=0xff0000))
+            return
+
+    await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
 
 @bot.tree.command(name="start", description="Starts a server")
 async def start_server(interaction: discord.Interaction, ssh_command_or_name: str):
     await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
     await start_server_task(interaction, ssh_command_or_name)
-    
+
 @bot.tree.command(name="stop", description="Stops a server")
 async def stop_server(interaction: discord.Interaction, ssh_command_or_name: str):
     await interaction.response.send_message(embed=discord.Embed(description="Stopping your server. Please wait...", color=0x00ff00))
