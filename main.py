@@ -290,6 +290,7 @@ async def deploy_arch(interaction: discord.Interaction):
 async def start_server_task(interaction: discord.Interaction, ssh_command_or_name: str):
     user = str(interaction.user)
     servers = get_user_servers(user)
+    client = docker.from_env()
 
     for server in servers:
         _, container_name, ssh_command = server.split('|')
@@ -299,22 +300,26 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
                 if container.status != 'running':
                     logging.info(f"Starting container: {container_name}")
                     container.start()
+                    container.reload()
+                    if container.status != 'running':
+                        raise Exception(f"Failed to start the container {container_name}.")
                 else:
                     logging.info(f"Container {container_name} is already running. Restarting")
                     container.stop()
-                    container.start()
+                    container.reload()
 
+                if container.status != 'exited':
+                        raise Exception(f"Failed to stop the container {container_name}.")
+                container.start()
                 container.reload()
-                logging.info(f"Container {container_name} status: {container.status}")
-                commands = """
-                tmate -F
-                """
-                container = client.containers.run(
-                    command="sh -c '{}'".format(commands), 
-                    detach=True, 
-                    tty=True, 
-                    mem_limit=RAM_LIMIT,
-                )
+                if container.status != 'running':
+                    raise Exception(f"Failed to start the container {container_name}.")
+
+                commands = "tmate -F"
+                exec_result = container.exec_run(f'sh -c "{commands}"', detach=True, tty=True)
+
+                if exec_result.exit_code != 0:
+                    raise Exception(f"Failed to start SSH session with exit code {exec_result.exit_code}.")
 
                 ssh_session_line = await get_ssh_session_line(container)
                 if ssh_session_line:
@@ -322,12 +327,11 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
                     await interaction.followup.send(embed=discord.Embed(description="Server created successfully. Check your DMs for details.", color=0x00ff00))
                 else:
                     raise Exception("Unable to retrieve SSH session line.")
-
             except Exception as e:
                 error_message = f"Failed to start server: Unable to execute SSH command. Error: {str(e)}"
                 logging.error(error_message)
                 await interaction.response.send_message(embed=discord.Embed(description=error_message, color=0xff0000))
-            return
+                return
 
     await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
 
