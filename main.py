@@ -94,6 +94,10 @@ def add_to_database(user, container_name, ssh_command):
     with open(database_file, 'a') as f:
         f.write(f"{user}|{container_name}|{ssh_command}\n")
 
+def add_to_database(user, container_name, ssh_command):
+    with open(database_file, 'a') as f:
+        f.write(f"{user}|{container_name}|{ssh_command}\n")
+
 def remove_from_database(ssh_command):
     if not os.path.exists(database_file):
         return
@@ -292,11 +296,10 @@ async def remove_server_task(interaction: discord.Interaction, ssh_command: str)
         await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to delete this server.", color=0xff0000))
 
 async def start_server_task(interaction: discord.Interaction, ssh_command_or_name: str):
-    await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
     user = str(interaction.user)
     servers = get_user_servers(user)
     server_found = False
-    
+
     for server in servers:
         _, container_name, old_ssh_command = server.split('|')
         if ssh_command_or_name in (old_ssh_command, container_name):
@@ -306,9 +309,9 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
             if container.status == 'running':
                 await interaction.followup.send(embed=discord.Embed(description="Server is already running.", color=0xff0000))
                 return
-            
+
             container.start()
-            
+
             exec_result = container.exec_run("tmate -F", detach=True)
             if exec_result.exit_code != 0:
                 await interaction.followup.send(embed=discord.Embed(description="Failed to start server: Unable to execute SSH command.", color=0xff0000))
@@ -327,16 +330,10 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
     if not server_found:
         await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
 
-
-def write_to_database(container_name: str, ssh_session_line: str):
-    with open('database.txt', 'r') as file:
-        lines = file.readlines()
-    
-    with open('database.txt', 'w') as file:
-        for line in lines:
-            if container_name in line:
-                line = f"{container_name}|{ssh_session_line}" 
-            file.write(line)
+@bot.tree.command(name="start", description="Starts a server")
+async def start_server(interaction: discord.Interaction, ssh_command_or_name: str):
+    await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
+    await start_server_task(interaction, ssh_command_or_name)
 
 async def stop_server_task(interaction: discord.Interaction, ssh_command: str):
     user = str(interaction.user)
