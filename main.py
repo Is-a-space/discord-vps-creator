@@ -312,6 +312,7 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
                 ssh_session_line = await get_ssh_session_line(container)
                 if ssh_session_line:
                     await interaction.response.send_message(embed=discord.Embed(description=f"Server started successfully. SSH command: {ssh_session_line}", color=0x00ff00))
+                    await interaction.followup.send(embed=discord.Embed(description="Server created successfully. Check your DMs for details.", color=0x00ff00))
                 else:
                     raise Exception("Unable to retrieve SSH session line.")
 
