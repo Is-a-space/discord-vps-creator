@@ -1,4 +1,16 @@
 import logging
+import subprocess
+import sys
+import os
+import re
+import time
+import concurrent.futures
+from dotenv import load_dotenv
+import discord
+from discord.ext import commands, tasks
+import docker
+from colorama import Fore, Style, init
+
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 def check_os():
@@ -28,10 +40,6 @@ def check_os():
 
 check_os()
 
-
-import subprocess
-import sys
-
 def install_and_import(package, version):
     try:
         __import__(package)
@@ -48,15 +56,6 @@ packages = {
 for package, version in packages.items():
     install_and_import(package, version)
 
-from colorama import Fore, Style, init
-import discord
-from discord.ext import commands, tasks
-import docker
-import time
-import re
-import os
-import concurrent.futures
-from dotenv import load_dotenv
 load_dotenv()
 init(autoreset=True)
 
@@ -81,6 +80,7 @@ def check_docker():
     except docker.errors.DockerException as e:
         logging.warning("Error! Docker is not installed or not started. Please install Docker or start Docker before running this again.")
         sys.exit(0)
+
 check_docker()
 
 client = docker.from_env()
@@ -89,10 +89,6 @@ SERVER_LIMIT = 12
 database_file = 'database.txt'
 
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=150)
-
-def add_to_database(user, container_name, ssh_command):
-    with open(database_file, 'a') as f:
-        f.write(f"{user}|{container_name}|{ssh_command}\n")
 
 def add_to_database(user, container_name, ssh_command):
     with open(database_file, 'a') as f:
@@ -219,7 +215,7 @@ async def create_server_task_debian(interaction: discord.Interaction):
     await interaction.response.send_message(embed=discord.Embed(description="Creating server, This takes a few seconds.\n```running apt update\nrunning apt install tmate -y\nrunning tmate -F```", color=0x00ff00))
     user = str(interaction.user)
     if count_user_servers(user) >= SERVER_LIMIT:
-        await interaction.followup.send(embed=discord.Embed(description="Error: Server Limit-reached\n```Failed to run apt update\nFailed to run apt install tmate\nFailed to run tmate -F\nError: Server Limit-reached```", color=0xff0000))
+        await interaction.followup.send(embed=discord.Embed(description="Error: Server Limit-reached\n\nLog: ```Failed to run apt update\nFailed to run apt install tmate\nFailed to run tmate -F\nError: Server Limit-reached```", color=0xff0000))
         return
 
     image = "debian:12"
@@ -234,12 +230,12 @@ async def create_server_task_debian(interaction: discord.Interaction):
         command="sh -c '{}'".format(commands), 
         detach=True, 
         tty=True, 
-        mem_limit=RAM_LIMIT, 
+        mem_limit=RAM_LIMIT,
     )
 
     ssh_session_line = await get_ssh_session_line(container)
     if ssh_session_line:
-        await interaction.user.send(embed=discord.Embed(description=f"### Successfully created VPS\n SSH Session Command: ```{ssh_session_line}```Powered by [is-a.space](https://discord.gg/is-a-space)\nOS: Debian 12", color=0x00ff00))
+        await interaction.user.send(embed=discord.Embed(description=f"### Successfully created VPS\n SSH Session Command: ```{ssh_session_line}```Powered by [is-a.space](https://discord.gg/is-a-space)\nOS:Debian 12", color=0x00ff00))
         add_to_database(user, container.name, ssh_session_line)
         await interaction.followup.send(embed=discord.Embed(description="Server created successfully. Check your DMs for details.", color=0x00ff00))
     else:
@@ -248,16 +244,16 @@ async def create_server_task_debian(interaction: discord.Interaction):
         container.remove()
 
 async def create_server_task_arch(interaction: discord.Interaction):
-    await interaction.response.send_message(embed=discord.Embed(description="Creating server, This takes a few seconds.\n\nLog:```running pacman -Syu\nrunning pacman -Sy tmate\nrunning tmate -F```", color=0x00ff00))
+    await interaction.response.send_message(embed=discord.Embed(description="Creating server, This takes a few seconds.\n```running pacman -Sy\nrunning pacman -S tmate\nrunning tmate -F```", color=0x00ff00))
     user = str(interaction.user)
     if count_user_servers(user) >= SERVER_LIMIT:
-        await interaction.followup.send(embed=discord.Embed(description="```Failed to run tmate -F\nError: Server Limit-reached```", color=0xff0000))
+        await interaction.followup.send(embed=discord.Embed(description="Error: Server Limit-reached\n\nLog: ```Failed to run pacman -Sy\nFailed to run pacman -S tmate\nFailed to run tmate -F\nError: Server Limit-reached```", color=0xff0000))
         return
 
     image = "archlinux:latest"
     commands = """
-    pacman -Sy \
-    pacman -Syu tamte && \
+    pacman -Sy --noconfirm && \
+    pacman -S --noconfirm tmate && \
     tmate -F
     """
 
@@ -266,12 +262,12 @@ async def create_server_task_arch(interaction: discord.Interaction):
         command="sh -c '{}'".format(commands), 
         detach=True, 
         tty=True, 
-        mem_limit=RAM_LIMIT, 
+        mem_limit=RAM_LIMIT,
     )
 
     ssh_session_line = await get_ssh_session_line(container)
     if ssh_session_line:
-        await interaction.user.send(embed=discord.Embed(description=f"### Successfully created VPS\n SSH Session Command: ```{ssh_session_line}```Powered by [is-a.space](https://discord.gg/is-a-space)\nOS: Debian 12", color=0x00ff00))
+        await interaction.user.send(embed=discord.Embed(description=f"### Successfully created VPS\n SSH Session Command: ```{ssh_session_line}```Powered by [is-a.space](https://discord.gg/is-a-space)\nOS:Arch Linux", color=0x00ff00))
         add_to_database(user, container.name, ssh_session_line)
         await interaction.followup.send(embed=discord.Embed(description="Server created successfully. Check your DMs for details.", color=0x00ff00))
     else:
@@ -279,21 +275,17 @@ async def create_server_task_arch(interaction: discord.Interaction):
         container.stop()
         container.remove()
 
-async def remove_server_task(interaction: discord.Interaction, ssh_command: str):
-    user = str(interaction.user)
-    servers = get_user_servers(user)
-    if any(ssh_command in server for server in servers):
-        container_name = next((server.split('|')[1] for server in servers if ssh_command in server), None)
-        if container_name:
-            container = client.containers.get(container_name)
-            container.stop()
-            container.remove()
-            remove_from_database(ssh_command)
-            await interaction.response.send_message(embed=discord.Embed(description="Server removed successfully.", color=0x00ff00))
-        else:
-            await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
-    else:
-        await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to delete this server.", color=0xff0000))
+@bot.tree.command(name="deploy-ubuntu", description="Creates a new server with Ubuntu 22.04")
+async def deploy_ubuntu(interaction: discord.Interaction):
+    await create_server_task(interaction)
+
+@bot.tree.command(name="deploy-debian", description="Creates a new server with Debian 12")
+async def deploy_debian(interaction: discord.Interaction):
+    await create_server_task_debian(interaction)
+
+@bot.tree.command(name="deploy-arch", description="Creates a new server with Arch Linux")
+async def deploy_arch(interaction: discord.Interaction):
+    await create_server_task_arch(interaction)
 
 async def start_server_task(interaction: discord.Interaction, ssh_command_or_name: str):
     user = str(interaction.user)
@@ -312,11 +304,13 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
 
             container.start()
 
+            # Run tmate -F to generate a new SSH session
             exec_result = container.exec_run("tmate -F", detach=True)
             if exec_result.exit_code != 0:
                 await interaction.followup.send(embed=discord.Embed(description="Failed to start server: Unable to execute SSH command.", color=0xff0000))
                 return
 
+            # Fetch the new SSH session line
             ssh_session_line = await get_ssh_session_line(container)
             if ssh_session_line:
                 await interaction.user.send(embed=discord.Embed(description=f"Server started successfully. New SSH Session Command: ```{ssh_session_line}```", color=0x00ff00))
@@ -335,152 +329,45 @@ async def start_server(interaction: discord.Interaction, ssh_command_or_name: st
     await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
     await start_server_task(interaction, ssh_command_or_name)
 
-async def stop_server_task(interaction: discord.Interaction, ssh_command: str):
-    user = str(interaction.user)
-    servers = get_user_servers(user)
-    if any(ssh_command in server for server in servers):
-        container_name = next((server.split('|')[1] for server in servers if ssh_command in server), None)
-        if container_name:
-            try:
-                container = client.containers.get(container_name)
-                
-                if container.status == 'running':
-                    container.stop()
-                    await interaction.response.send_message(embed=discord.Embed(description="Server stopped successfully.", color=0x00ff00))
-                else:
-                    await interaction.response.send_message(embed=discord.Embed(description="Server is not running.", color=0xff0000))
-            except docker.errors.APIError as e:
-                await interaction.response.send_message(embed=discord.Embed(description=f"Failed to stop server: {str(e)}", color=0xff0000))
-        else:
-            await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
-    else:
-        await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to stop this server.", color=0xff0000))
-
-async def restart_server_task(interaction: discord.Interaction, ssh_command: str):
-    user = str(interaction.user)
-    servers = get_user_servers(user)
-    if any(ssh_command in server for server in servers):
-        container_name = next((server.split('|')[1] for server in servers if ssh_command in server), None)
-        if container_name:
-            try:
-                container = client.containers.get(container_name)
-                
-                if container.status == 'running':
-                    container.restart()
-                    container.exec_run("tmate -F", detach=True)
-                    ssh_session_line = await get_ssh_session_line(container)
-                    if ssh_session_line:
-                        await interaction.user.send(embed=discord.Embed(description=f"### Successfully restarted Server\nNew SSH Session Command: ```{ssh_session_line}```", color=0x00ff00))
-                        await interaction.response.send_message(embed=discord.Embed(description="Server restarted successfully. Check your DMs for details.", color=0x00ff00))
-                    else:
-                        await interaction.response.send_message(embed=discord.Embed(description="Failed to restart server: Unable to get SSH session.", color=0xff0000))
-                else:
-                    await interaction.response.send_message(embed=discord.Embed(description="Failed to restart server: Server is not running.", color=0xff0000))
-            except docker.errors.APIError as e:
-                await interaction.response.send_message(embed=discord.Embed(description=f"Failed to restart server: {str(e)}", color=0xff0000))
-        else:
-            await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
-    else:
-        await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to restart this server.", color=0xff0000))
-
-@bot.tree.command(name="deploy-ubuntu", description="Creates a new server with Ubuntu 22.04.")
-async def deploy(interaction: discord.Interaction):
-    await create_server_task(interaction)
-
-@bot.tree.command(name="deploy-debian", description="Creates a new server with Debian 12.")
-async def deploy(interaction: discord.Interaction):
-    await create_server_task_debian(interaction)
-
-@bot.tree.command(name="deploy-arch", description="Creates a new server with Arch Linux.")
-async def deploy(interaction: discord.Interaction):
-    await create_server_task_arch(interaction)
-
-@bot.tree.command(name="remove", description="Removes a server")
-async def remove(interaction: discord.Interaction, ssh_command: str):
-    await remove_server_task(interaction, ssh_command)
-
-@bot.tree.command(name="start", description="Starts a server")
-async def start_server(interaction: discord.Interaction, ssh_command_or_name: str):
-    await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
-    user = str(interaction.user)
-    servers = get_user_servers(user)
-    server_found = False
-    for server in servers:
-        _, container_name, ssh_command = server.split('|')
-        if interaction.data['options'][0]['value'] in (ssh_command, container_name):
-            server_found = True
-            container = client.containers.get(container_name)
-            container.start()
-            container.exec_run("tmate -F", detach=True)
-
-            ssh_session_line = await get_ssh_session_line(container)
-            if ssh_session_line:
-                await interaction.user.send(embed=discord.Embed(description=f"Server started successfully. New SSH Session Command: ```{ssh_session_line}```", color=0x00ff00))
-            else:
-                await interaction.followup.send(embed=discord.Embed(description="Server started, but failed to retrieve the SSH session command.", color=0xff0000))
-            break
-    if not server_found:
-        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
-
 @bot.tree.command(name="stop", description="Stops a server")
 async def stop_server(interaction: discord.Interaction, ssh_command_or_name: str):
-    await interaction.response.send_message(embed=discord.Embed(description="Stopping your server. Please wait...", color=0x00ff00))
     user = str(interaction.user)
     servers = get_user_servers(user)
     server_found = False
-    for server in servers:
-        _, container_name, ssh_command = server.split('|')
-        if interaction.data['options'][0]['value'] in (ssh_command, container_name):
-            server_found = True
-            container = client.containers.get(container_name)
-            container.stop()
-            await interaction.followup.send(embed=discord.Embed(description="Server stopped successfully.", color=0x00ff00))
-            break
-    if not server_found:
-        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
 
-@bot.tree.command(name="restart", description="Restarts a server")
-async def restart_server(interaction: discord.Interaction, ssh_command_or_name: str):
-    await interaction.response.send_message(embed=discord.Embed(description="Restarting your server. Please wait...", color=0x00ff00))
-    user = str(interaction.user)
-    servers = get_user_servers(user)
-    server_found = False
     for server in servers:
         _, container_name, ssh_command = server.split('|')
-        if interaction.data['options'][0]['value'] in (ssh_command, container_name):
-            server_found = True
-            container = client.containers.get(container_name)
-            container.restart()
-            await interaction.followup.send(embed=discord.Embed(description="Server restarted successfully.", color=0x00ff00))
-            break
-    if not server_found:
-        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
-
-@bot.tree.command(name="ressh", description="Regenerates the SSH session command")
-async def ressh_server(interaction: discord.Interaction, ssh_command_or_name: str):
-    await interaction.response.send_message(embed=discord.Embed(description="Regenerating SSH session command. Please wait...", color=0x00ff00))
-    user = str(interaction.user)
-    servers = get_user_servers(user)
-    server_found = False
-    for server in servers:
-        _, container_name, ssh_command = server.split('|')
-        if interaction.data['options'][0]['value'] in (ssh_command, container_name):
+        if ssh_command_or_name in (ssh_command, container_name):
             server_found = True
             container = client.containers.get(container_name)
             if container.status != 'running':
-                await interaction.followup.send(embed=discord.Embed(description="Server is not running. Start the server first.", color=0xff0000))
+                await interaction.followup.send(embed=discord.Embed(description="Server is not running.", color=0xff0000))
                 return
-
-            container.exec_run("tmate -F", detach=True)
-            ssh_session_line = await get_ssh_session_line(container)
-            if ssh_session_line:
-                await interaction.user.send(embed=discord.Embed(description=f"New SSH Session Command: ```{ssh_session_line}```", color=0x00ff00))
-                remove_from_database(ssh_command)
-                add_to_database(user, container_name, ssh_session_line)
-            else:
-                await interaction.followup.send(embed=discord.Embed(description="Failed to retrieve the SSH session command.", color=0xff0000))
+            container.stop()
+            await interaction.followup.send(embed=discord.Embed(description="Server stopped successfully.", color=0x00ff00))
             break
+    
     if not server_found:
         await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
-      
-bot.run(os.getenv('TOKEN'))
+
+@bot.tree.command(name="remove", description="Removes a server")
+async def remove_server(interaction: discord.Interaction, ssh_command_or_name: str):
+    user = str(interaction.user)
+    servers = get_user_servers(user)
+    server_found = False
+
+    for server in servers:
+        _, container_name, ssh_command = server.split('|')
+        if ssh_command_or_name in (ssh_command, container_name):
+            server_found = True
+            container = client.containers.get(container_name)
+            container.stop()
+            container.remove()
+            remove_from_database(ssh_command)
+            await interaction.followup.send(embed=discord.Embed(description="Server removed successfully.", color=0x00ff00))
+            break
+    
+    if not server_found:
+        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
+
+bot.run(TOKEN)
