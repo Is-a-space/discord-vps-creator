@@ -326,7 +326,23 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
 async def start_server(interaction: discord.Interaction, ssh_command_or_name: str):
     await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
     await start_server_task(interaction, ssh_command_or_name)
+    
 @bot.tree.command(name="stop", description="Stops a server")
+async def stop_server(interaction: discord.Interaction, ssh_command_or_name: str):
+    await interaction.response.send_message(embed=discord.Embed(description="Stopping your server. Please wait...", color=0x00ff00))
+    user = str(interaction.user)
+    servers = get_user_servers(user)
+    server_found = False
+    for server in servers:
+        _, container_name, ssh_command = server.split('|')
+        if interaction.data['options'][0]['value'] in (ssh_command, container_name):
+            server_found = True
+            container = client.containers.get(container_name)
+            container.stop()
+            await interaction.followup.send(embed=discord.Embed(description="Server stopped successfully.", color=0x00ff00))
+            break
+    if not server_found:
+        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
 async def stop_server_task(interaction: discord.Interaction, ssh_command: str):
     user = str(interaction.user)
     servers = get_user_servers(user)
