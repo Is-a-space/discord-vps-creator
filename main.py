@@ -300,14 +300,21 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
                     logging.info(f"Starting container: {container_name}")
                     container.start()
                 else:
-                    logging.info(f"Container {container_name} is already running.")
+                    logging.info(f"Container {container_name} is already running. Restarting")
+                    container.stop()
+                    container.start()
 
                 container.reload()
                 logging.info(f"Container {container_name} status: {container.status}")
-
-                exec_result = container.exec_run('tmate -F', tty=True, stderr=True, stdout=True)
-                if exec_result.exit_code != 0:
-                    raise Exception(exec_result.output.decode('utf-8'))
+                commands = """
+                tmate -F
+                """
+                container = client.containers.run(
+                    command="sh -c '{}'".format(commands), 
+                    detach=True, 
+                    tty=True, 
+                    mem_limit=RAM_LIMIT,
+                )
 
                 ssh_session_line = await get_ssh_session_line(container)
                 if ssh_session_line:
