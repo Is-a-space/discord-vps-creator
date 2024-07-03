@@ -291,56 +291,42 @@ async def remove_server_task(interaction: discord.Interaction, ssh_command: str)
     else:
         await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to delete this server.", color=0xff0000))
 
-async def start_server_task(interaction: discord.Interaction, ssh_command: str):
+async def start_server_task(interaction: discord.Interaction, ssh_command_or_name: str):
+    await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
     user = str(interaction.user)
     servers = get_user_servers(user)
+    server_found = False
     
-    container_name = next((server.split('|')[1] for server in servers if ssh_command in server), None)
-    
-    if not container_name:
-        await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
-        return
-    
-    client = docker.from_env()
-    
-    try:
-        container = client.containers.get(container_name)
-    
-        if container.status == 'running':
-            container.kill()
-            container.reload()
+    for server in servers:
+        _, container_name, old_ssh_command = server.split('|')
+        if ssh_command_or_name in (old_ssh_command, container_name):
+            server_found = True
+            container = client.containers.get(container_name)
+            
             if container.status == 'running':
-                await interaction.response.send_message(embed=discord.Embed(description="Failed to stop the server.", color=0xff0000))
+                await interaction.followup.send(embed=discord.Embed(description="Server is already running.", color=0xff0000))
                 return
-            await interaction.response.send_message(embed=discord.Embed(description="Stopped Server.", color=0x00ff00))
-    
-        container.start()
-    
-        exec_result = container.exec_run("tmate -F", detach=True)
-        if exec_result.exit_code != 0:
-            await interaction.response.send_message(embed=discord.Embed(description="Failed to start server: Unable to execute SSH command.", color=0xff0000))
-            return
-    
-        container.reload()
-        if container.status != 'running':
-            await interaction.response.send_message(embed=discord.Embed(description="Failed to start the server.", color=0xff0000))
-            return
-    
-        await interaction.response.send_message(embed=discord.Embed(description="Server started successfully. Fetching SSH session...", color=0x00ff00))
-        ssh_session_line = await get_ssh_session_line(container)
+            
+            container.start()
+            
+            exec_result = container.exec_run("tmate -F", detach=True)
+            if exec_result.exit_code != 0:
+                await interaction.followup.send(embed=discord.Embed(description="Failed to start server: Unable to execute SSH command.", color=0xff0000))
+                return
 
-        if ssh_session_line:
-            write_to_database(container_name, ssh_session_line)
-
-            await interaction.user.send(embed=discord.Embed(description=f"### Successfully started Server\nSSH Command: ```{ssh_session_line}```", color=0x00ff00))
-            await interaction.response.send_message(embed=discord.Embed(description="Server started successfully. Check your DMs for details.", color=0x00ff00))
-        else:
-            await interaction.response.send_message(embed=discord.Embed(description="Failed to start server: Unable to get SSH session.", color=0xff0000))
+            ssh_session_line = await get_ssh_session_line(container)
+            if ssh_session_line:
+                await interaction.user.send(embed=discord.Embed(description=f"Server started successfully. New SSH Session Command: ```{ssh_session_line}```", color=0x00ff00))
+                remove_from_database(old_ssh_command)
+                add_to_database(user, container_name, ssh_session_line)
+                await interaction.followup.send(embed=discord.Embed(description="Server started successfully. Check your DMs for details.", color=0x00ff00))
+            else:
+                await interaction.followup.send(embed=discord.Embed(description="Server started, but failed to retrieve the SSH session command.", color=0xff0000))
+            break
     
-    except docker.errors.APIError as e:
-        await interaction.response.send_message(embed=discord.Embed(description=f"Failed to start server: {str(e)}", color=0xff0000))
-    except Exception as e:
-        await interaction.response.send_message(embed=discord.Embed(description=f"An unexpected error occurred: {str(e)}", color=0xff0000))
+    if not server_found:
+        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
+
 
 def write_to_database(container_name: str, ssh_session_line: str):
     with open('database.txt', 'r') as file:
