@@ -327,27 +327,26 @@ async def start_server(interaction: discord.Interaction, ssh_command_or_name: st
     await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
     await start_server_task(interaction, ssh_command_or_name)
 
-@bot.tree.command(name="stop", description="Stops a server")
-async def stop_server(interaction: discord.Interaction, ssh_command_or_name: str):
+async def stop_server_task(interaction: discord.Interaction, ssh_command: str):
     user = str(interaction.user)
     servers = get_user_servers(user)
-    server_found = False
-
-    for server in servers:
-        _, container_name, ssh_command = server.split('|')
-        if ssh_command_or_name in (ssh_command, container_name):
-            server_found = True
-            container = client.containers.get(container_name)
-            if container.status != 'running':
-                await interaction.followup.send(embed=discord.Embed(description="Server is not running.", color=0xff0000))
-                return
-            container.stop()
-            await interaction.followup.send(embed=discord.Embed(description="Server stopped successfully.", color=0x00ff00))
-            break
-    
-    if not server_found:
-        await interaction.followup.send(embed=discord.Embed(description="Server not found. Please check your input.", color=0xff0000))
-
+    if any(ssh_command in server for server in servers):
+        container_name = next((server.split('|')[1] for server in servers if ssh_command in server), None)
+        if container_name:
+            try:
+                container = client.containers.get(container_name)
+                
+                if container.status == 'running':
+                    container.stop()
+                    await interaction.response.send_message(embed=discord.Embed(description="Server stopped successfully.", color=0x00ff00))
+                else:
+                    await interaction.response.send_message(embed=discord.Embed(description="Server is not running.", color=0xff0000))
+            except docker.errors.APIError as e:
+                await interaction.response.send_message(embed=discord.Embed(description=f"Failed to stop server: {str(e)}", color=0xff0000))
+        else:
+            await interaction.response.send_message(embed=discord.Embed(description="Server not found.", color=0xff0000))
+    else:
+        await interaction.response.send_message(embed=discord.Embed(description="Something went wrong trying to stop this server.", color=0xff0000))
 @bot.tree.command(name="remove", description="Removes a server")
 async def remove_server(interaction: discord.Interaction, ssh_command_or_name: str):
     user = str(interaction.user)
