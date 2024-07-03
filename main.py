@@ -304,13 +304,11 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
 
             container.start()
 
-            # Run tmate -F to generate a new SSH session
             exec_result = container.exec_run("tmate -F", detach=True)
             if exec_result.exit_code != 0:
                 await interaction.followup.send(embed=discord.Embed(description="Failed to start server: Unable to execute SSH command.", color=0xff0000))
                 return
 
-            # Fetch the new SSH session line
             ssh_session_line = await get_ssh_session_line(container)
             if ssh_session_line:
                 await interaction.user.send(embed=discord.Embed(description=f"Server started successfully. New SSH Session Command: ```{ssh_session_line}```", color=0x00ff00))
