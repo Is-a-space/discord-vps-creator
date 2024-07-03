@@ -326,7 +326,7 @@ async def start_server_task(interaction: discord.Interaction, ssh_command_or_nam
 async def start_server(interaction: discord.Interaction, ssh_command_or_name: str):
     await interaction.response.send_message(embed=discord.Embed(description="Starting your server. Please wait...", color=0x00ff00))
     await start_server_task(interaction, ssh_command_or_name)
-
+@bot.tree.command(name="stop", description="Stops a server")
 async def stop_server_task(interaction: discord.Interaction, ssh_command: str):
     user = str(interaction.user)
     servers = get_user_servers(user)
